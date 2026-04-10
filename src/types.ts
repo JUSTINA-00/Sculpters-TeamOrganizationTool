@@ -19,7 +19,6 @@ export type Task = {
   assignedTo: string | null; // uid
   createdBy: string; // uid
   teamId: string;
-  editingBy?: string; // uid — transient UI state only
   createdAt: number;
   updatedAt: number;
 };

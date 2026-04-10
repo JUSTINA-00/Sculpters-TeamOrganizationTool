@@ -3,7 +3,7 @@ import {
   CheckSquare, MessageSquare, FileText, Calendar,
   Plus, Send, ArrowLeft, LogOut, Users, Key,
   ShieldCheck, AlertCircle, Loader2, Trash2, X,
-  Check, UserCheck, Clock
+  Check, UserCheck, Clock, ChevronDown
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
@@ -19,8 +19,8 @@ import {
 } from 'firebase/auth';
 import {
   doc, setDoc, getDoc, onSnapshot, collection, query,
-  where, addDoc, updateDoc, deleteDoc, serverTimestamp,
-  getDocs, orderBy, Timestamp
+  where, addDoc, updateDoc, deleteDoc,
+  getDocs, orderBy
 } from 'firebase/firestore';
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -125,7 +125,6 @@ export default function App() {
     isOffline: false, queuedChanges: 0, syncStatus: 'synced',
     nodes: { A: 'alive', B: 'alive', C: 'dead' },
   });
-  const [conflictToast, setConflictToast] = useState<string | null>(null);
   const [unreadMessages, setUnreadMessages] = useState(0);
   const lastSeenMessage = useRef<number>(Date.now());
 
@@ -162,11 +161,15 @@ export default function App() {
     return unsub;
   }, [profile?.teamId]);
 
-  // ── Members listener ─────────────────────────────────────────────────────
+  // ── Members listener — only approved members (role != 'pending') ──────────
 
   useEffect(() => {
     if (!profile?.teamId) return;
-    const q = query(collection(db, 'users'), where('teamId', '==', profile.teamId));
+    const q = query(
+      collection(db, 'users'),
+      where('teamId', '==', profile.teamId),
+      where('role', 'in', ['leader', 'member'])
+    );
     const unsub = onSnapshot(q, (snap) => {
       setMembers(snap.docs.map(d => d.data() as TeamMember));
     });
@@ -206,7 +209,7 @@ export default function App() {
       }
     });
     return unsub;
-  }, [profile?.teamId, activeTab]);
+  }, [profile?.teamId, activeTab, firebaseUser?.uid]);
 
   // ── Docs listener ────────────────────────────────────────────────────────
 
@@ -261,8 +264,8 @@ export default function App() {
     const fd = new FormData(e.currentTarget);
     try {
       await signInWithEmailAndPassword(auth, fd.get('email') as string, fd.get('password') as string);
-    } catch (err: any) {
-      setAuthError(err.message);
+    } catch (err: unknown) {
+      setAuthError(err instanceof Error ? err.message : 'Login failed');
     } finally { setAuthLoading(false); }
   };
 
@@ -285,8 +288,8 @@ export default function App() {
       };
       await setDoc(doc(db, 'users', user.uid), newProfile);
       setProfile(newProfile);
-    } catch (err: any) {
-      setAuthError(err.message);
+    } catch (err: unknown) {
+      setAuthError(err instanceof Error ? err.message : 'Signup failed');
     } finally { setAuthLoading(false); }
   };
 
@@ -300,10 +303,11 @@ export default function App() {
     const fd = new FormData(e.currentTarget);
     const teamName = fd.get('teamName') as string;
     const joinCode = Math.random().toString(36).substring(2, 8).toUpperCase();
-    const teamId = doc(collection(db, 'teams')).id;
+    const teamRef = doc(collection(db, 'teams'));
+    const teamId = teamRef.id;
     try {
       const teamData: Team = { id: teamId, name: teamName, joinCode, leaderId: firebaseUser.uid, createdAt: Date.now() };
-      await setDoc(doc(db, 'teams', teamId), teamData);
+      await setDoc(teamRef, teamData);
       await updateDoc(doc(db, 'users', firebaseUser.uid), { teamId, role: 'leader' });
       triggerSync();
     } catch (err) { handleFirestoreError(err, OperationType.WRITE, 'teams'); }
@@ -319,12 +323,27 @@ export default function App() {
       const snap = await getDocs(q);
       if (snap.empty) { alert('Invalid join code. Please check and try again.'); return; }
       const foundTeam = snap.docs[0].data() as Team;
+
+      // Check if already requested
+      const existingQ = query(
+        collection(db, 'joinRequests'),
+        where('userId', '==', firebaseUser.uid),
+        where('teamId', '==', foundTeam.id),
+        where('status', '==', 'pending')
+      );
+      const existingSnap = await getDocs(existingQ);
+      if (!existingSnap.empty) {
+        alert('You already have a pending request for this team.');
+        return;
+      }
+
       await addDoc(collection(db, 'joinRequests'), {
         userId: firebaseUser.uid, teamId: foundTeam.id,
         userName: profile.displayName, userEmail: profile.email,
         status: 'pending', createdAt: Date.now(),
       });
-      alert('Join request sent! Wait for the team leader to approve.');
+      // Store teamId so we show "pending" state
+      await updateDoc(doc(db, 'users', firebaseUser.uid), { teamId: foundTeam.id, role: 'pending' });
       triggerSync();
     } catch (err) { handleFirestoreError(err, OperationType.WRITE, 'joinRequests'); }
   };
@@ -338,21 +357,23 @@ export default function App() {
     } catch (err) { handleFirestoreError(err, OperationType.UPDATE, `joinRequests/${requestId}`); }
   };
 
-  const handleRejectRequest = async (requestId: string) => {
+  const handleRejectRequest = async (requestId: string, userId: string) => {
     try {
       await updateDoc(doc(db, 'joinRequests', requestId), { status: 'rejected' });
+      // Clear pending state so user can try again
+      await updateDoc(doc(db, 'users', userId), { teamId: null, role: 'pending' });
     } catch (err) { handleFirestoreError(err, OperationType.UPDATE, `joinRequests/${requestId}`); }
   };
 
   // ── Task handlers ────────────────────────────────────────────────────────
 
-  const handleAddTask = async (title: string, tag: TaskTag) => {
+  const handleAddTask = async (title: string, tag: TaskTag, assignedTo: string | null) => {
     if (!profile?.teamId || !firebaseUser) return;
     const now = Date.now();
     try {
       await addDoc(collection(db, 'tasks'), {
         title, tag, completed: false,
-        assignedTo: null, createdBy: firebaseUser.uid,
+        assignedTo, createdBy: firebaseUser.uid,
         teamId: profile.teamId, createdAt: now, updatedAt: now,
       });
       triggerSync();
@@ -371,6 +392,13 @@ export default function App() {
       await deleteDoc(doc(db, 'tasks', taskId));
       triggerSync();
     } catch (err) { handleFirestoreError(err, OperationType.DELETE, `tasks/${taskId}`); }
+  };
+
+  const handleAssignTask = async (taskId: string, assignedTo: string | null) => {
+    try {
+      await updateDoc(doc(db, 'tasks', taskId), { assignedTo, updatedAt: Date.now() });
+      triggerSync();
+    } catch (err) { handleFirestoreError(err, OperationType.UPDATE, `tasks/${taskId}`); }
   };
 
   // ── Message handlers ─────────────────────────────────────────────────────
@@ -405,9 +433,12 @@ export default function App() {
   const handleUpdateDoc = async (docId: string, content: string) => {
     if (!firebaseUser) return;
     try {
+      const currentDoc = docs.find(d => d.id === docId);
+      const currentEditors = currentDoc?.editors || [];
+      const updatedEditors = Array.from(new Set([...currentEditors, firebaseUser.uid]));
       await updateDoc(doc(db, 'docs', docId), {
         content, updatedAt: Date.now(),
-        editors: Array.from(new Set([...(docs.find(d => d.id === docId)?.editors || []), firebaseUser.uid])),
+        editors: updatedEditors,
       });
       triggerSync();
     } catch (err) { handleFirestoreError(err, OperationType.UPDATE, `docs/${docId}`); }
@@ -427,7 +458,7 @@ export default function App() {
     try {
       await addDoc(collection(db, 'meetings'), {
         ...data, teamId: profile.teamId, createdBy: firebaseUser.uid,
-        attendees: [firebaseUser.uid], rsvps: [], createdAt: Date.now(),
+        attendees: [firebaseUser.uid], rsvps: [firebaseUser.uid], createdAt: Date.now(),
       });
       triggerSync();
     } catch (err) { handleFirestoreError(err, OperationType.CREATE, 'meetings'); }
@@ -531,14 +562,25 @@ export default function App() {
           {!profile.teamId && activeTab !== 'team' && (
             <div className="bg-[#FAEEDA] text-[#854F0B] px-6 py-2 text-sm font-medium flex items-center justify-center gap-2 border-b border-[#F5E1C0]">
               <AlertCircle size={14} />
-              You're not in a team yet. Go to <button onClick={() => setActiveTab('team')} className="underline font-bold">Team</button> to create or join one.
+              You're not in a team yet. Go to{' '}
+              <button onClick={() => setActiveTab('team')} className="underline font-bold">Team</button>{' '}
+              to create or join one.
+            </div>
+          )}
+          {profile.teamId && profile.role === 'pending' && activeTab !== 'team' && (
+            <div className="bg-[#FAEEDA] text-[#854F0B] px-6 py-2 text-sm font-medium flex items-center justify-center gap-2 border-b border-[#F5E1C0]">
+              <Clock size={14} />
+              Your join request is pending approval. Check the{' '}
+              <button onClick={() => setActiveTab('team')} className="underline font-bold">Team</button>{' '}
+              tab for status.
             </div>
           )}
           <div className="flex-1 overflow-y-auto p-8 scrollbar-hide">
             <AnimatePresence mode="wait">
               {activeTab === 'tasks' && (
                 <TasksPanel key="tasks" tasks={tasks} members={members} currentUser={profile}
-                  onToggle={handleToggleTask} onAdd={handleAddTask} onDelete={handleDeleteTask} />
+                  onToggle={handleToggleTask} onAdd={handleAddTask} onDelete={handleDeleteTask}
+                  onAssign={handleAssignTask} />
               )}
               {activeTab === 'chat' && (
                 <ChatPanel key="chat" messages={messages} currentUser={profile} onSend={handleSendMessage} />
@@ -558,17 +600,6 @@ export default function App() {
               )}
             </AnimatePresence>
           </div>
-
-          {/* Conflict Toast */}
-          <AnimatePresence>
-            {conflictToast && (
-              <motion.div initial={{ opacity: 0, y: 50 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 50 }}
-                className="absolute bottom-8 left-1/2 -translate-x-1/2 bg-[#141414] text-white px-4 py-3 rounded-lg text-sm shadow-xl flex items-center gap-3 z-50 min-w-[400px]">
-                <div className="w-2 h-2 rounded-full bg-[#A32D2D] animate-pulse" />
-                {conflictToast}
-              </motion.div>
-            )}
-          </AnimatePresence>
         </main>
       </div>
     </div>
@@ -640,44 +671,78 @@ function AuthScreen({ mode, onLogin, onSignup, onToggleMode, error, loading }: {
 
 // ─── Tasks Panel ─────────────────────────────────────────────────────────────
 
-function TasksPanel({ tasks, members, currentUser, onToggle, onAdd, onDelete }: {
+function TasksPanel({ tasks, members, currentUser, onToggle, onAdd, onDelete, onAssign }: {
   tasks: Task[]; members: TeamMember[]; currentUser: UserProfile;
-  onToggle: (task: Task) => void; onAdd: (title: string, tag: TaskTag) => void;
+  onToggle: (task: Task) => void;
+  onAdd: (title: string, tag: TaskTag, assignedTo: string | null) => void;
   onDelete: (id: string) => void;
+  onAssign: (taskId: string, assignedTo: string | null) => void;
 }) {
   const [inputValue, setInputValue] = useState('');
   const [selectedTag, setSelectedTag] = useState<TaskTag>('dev');
+  const [assignedTo, setAssignedTo] = useState<string>('');
+  const [filterTag, setFilterTag] = useState<TaskTag | 'all'>('all');
+  const [filterAssignee, setFilterAssignee] = useState<string>('all');
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!inputValue.trim()) return;
-    onAdd(inputValue.trim(), selectedTag);
+    onAdd(inputValue.trim(), selectedTag, assignedTo || null);
     setInputValue('');
+    setAssignedTo('');
   };
 
   const getMember = (uid: string) => members.find(m => m.uid === uid);
 
-  const incomplete = tasks.filter(t => !t.completed);
-  const complete = tasks.filter(t => t.completed);
+  const filtered = tasks.filter(t => {
+    if (filterTag !== 'all' && t.tag !== filterTag) return false;
+    if (filterAssignee !== 'all') {
+      if (filterAssignee === 'unassigned' && t.assignedTo !== null) return false;
+      if (filterAssignee !== 'unassigned' && t.assignedTo !== filterAssignee) return false;
+    }
+    return true;
+  });
+
+  const incomplete = filtered.filter(t => !t.completed);
+  const complete = filtered.filter(t => t.completed);
 
   return (
     <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} className="max-w-2xl mx-auto">
       <div className="flex items-center justify-between mb-6">
         <h2 className="text-2xl font-bold">Tasks</h2>
-        <span className="text-sm text-gray-400">{incomplete.length} remaining</span>
+        <span className="text-sm text-gray-400">{tasks.filter(t => !t.completed).length} remaining</span>
+      </div>
+
+      {/* Filters */}
+      <div className="flex gap-2 mb-4 flex-wrap">
+        <select value={filterTag} onChange={e => setFilterTag(e.target.value as TaskTag | 'all')}
+          className="text-xs font-bold bg-white border border-[rgba(0,0,0,0.1)] rounded-lg px-3 py-1.5 outline-none focus:border-[#534AB7]">
+          <option value="all">All tags</option>
+          <option value="design">Design</option>
+          <option value="dev">Dev</option>
+          <option value="pm">PM</option>
+          <option value="bug">Bug</option>
+        </select>
+        <select value={filterAssignee} onChange={e => setFilterAssignee(e.target.value)}
+          className="text-xs font-bold bg-white border border-[rgba(0,0,0,0.1)] rounded-lg px-3 py-1.5 outline-none focus:border-[#534AB7]">
+          <option value="all">All assignees</option>
+          <option value="unassigned">Unassigned</option>
+          {members.map(m => <option key={m.uid} value={m.uid}>{m.displayName}</option>)}
+        </select>
       </div>
 
       <div className="space-y-3 mb-8">
-        {tasks.length === 0 && (
-          <div className="text-center py-12 text-gray-400 text-sm">No tasks yet. Add one below!</div>
+        {filtered.length === 0 && (
+          <div className="text-center py-12 text-gray-400 text-sm">No tasks match your filters.</div>
         )}
         {[...incomplete, ...complete].map(task => {
           const creator = getMember(task.createdBy);
+          const assignee = task.assignedTo ? getMember(task.assignedTo) : null;
           return (
             <div key={task.id}
               className="bg-white border border-[rgba(0,0,0,0.08)] p-4 rounded-xl flex items-center gap-4 group transition-all hover:border-[rgba(0,0,0,0.15)]">
               <input type="checkbox" checked={task.completed} onChange={() => onToggle(task)}
-                className="w-5 h-5 rounded border-gray-300 text-[#534AB7] focus:ring-[#534AB7] shrink-0" />
+                className="w-5 h-5 rounded border-gray-300 text-[#534AB7] focus:ring-[#534AB7] shrink-0 cursor-pointer" />
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
                   <span className={`font-medium truncate ${task.completed ? 'line-through text-gray-400' : 'text-gray-900'}`}>
@@ -687,13 +752,35 @@ function TasksPanel({ tasks, members, currentUser, onToggle, onAdd, onDelete }: 
                     {task.tag}
                   </span>
                 </div>
-                {creator && (
-                  <div className="flex items-center gap-1.5 mt-1">
-                    <Avatar initials={creator.initials} color={creator.color} size="sm" />
-                    <span className="text-[10px] text-gray-400">{creator.displayName} · {formatRelative(task.createdAt)}</span>
-                  </div>
-                )}
+                <div className="flex items-center gap-3 mt-1 flex-wrap">
+                  {creator && (
+                    <div className="flex items-center gap-1.5">
+                      <Avatar initials={creator.initials} color={creator.color} size="sm" />
+                      <span className="text-[10px] text-gray-400">{creator.displayName} · {formatRelative(task.createdAt)}</span>
+                    </div>
+                  )}
+                  {assignee && (
+                    <div className="flex items-center gap-1 text-[10px] text-[#534AB7] font-medium">
+                      <span>→</span>
+                      <Avatar initials={assignee.initials} color={assignee.color} size="sm" />
+                      <span>{assignee.displayName}</span>
+                    </div>
+                  )}
+                </div>
               </div>
+              {/* Assign dropdown */}
+              {(currentUser.role === 'leader' || task.createdBy === currentUser.uid) && members.length > 0 && (
+                <div className="relative opacity-0 group-hover:opacity-100 transition-opacity">
+                  <select
+                    value={task.assignedTo || ''}
+                    onChange={e => onAssign(task.id, e.target.value || null)}
+                    className="text-[10px] bg-gray-50 border border-[rgba(0,0,0,0.1)] rounded px-2 py-1 outline-none cursor-pointer max-w-[100px]"
+                  >
+                    <option value="">Unassigned</option>
+                    {members.map(m => <option key={m.uid} value={m.uid}>{m.displayName}</option>)}
+                  </select>
+                </div>
+              )}
               {(task.createdBy === currentUser.uid || currentUser.role === 'leader') && (
                 <button onClick={() => onDelete(task.id)}
                   className="opacity-0 group-hover:opacity-100 p-1.5 text-gray-300 hover:text-[#A32D2D] transition-all shrink-0">
@@ -705,9 +792,9 @@ function TasksPanel({ tasks, members, currentUser, onToggle, onAdd, onDelete }: 
         })}
       </div>
 
-      <form onSubmit={handleSubmit} className="bg-white border border-[rgba(0,0,0,0.08)] p-2 rounded-xl flex items-center gap-2">
+      <form onSubmit={handleSubmit} className="bg-white border border-[rgba(0,0,0,0.08)] p-2 rounded-xl flex items-center gap-2 flex-wrap">
         <input type="text" value={inputValue} onChange={e => setInputValue(e.target.value)}
-          placeholder="Add a new task..." className="flex-1 px-3 py-2 text-sm outline-none" />
+          placeholder="Add a new task..." className="flex-1 min-w-[180px] px-3 py-2 text-sm outline-none" />
         <select value={selectedTag} onChange={e => setSelectedTag(e.target.value as TaskTag)}
           className="text-xs font-bold uppercase bg-gray-50 border-none rounded px-2 py-1 outline-none">
           <option value="design">Design</option>
@@ -715,6 +802,13 @@ function TasksPanel({ tasks, members, currentUser, onToggle, onAdd, onDelete }: 
           <option value="pm">PM</option>
           <option value="bug">Bug</option>
         </select>
+        {members.length > 0 && (
+          <select value={assignedTo} onChange={e => setAssignedTo(e.target.value)}
+            className="text-xs bg-gray-50 border-none rounded px-2 py-1 outline-none">
+            <option value="">Unassigned</option>
+            {members.map(m => <option key={m.uid} value={m.uid}>{m.displayName}</option>)}
+          </select>
+        )}
         <button type="submit" className="bg-[#534AB7] text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-[#453d9c] transition-colors flex items-center gap-1">
           <Plus size={14} /> Add
         </button>
@@ -740,6 +834,15 @@ function ChatPanel({ messages, currentUser, onSend }: {
     if (!inputValue.trim()) return;
     onSend(inputValue.trim());
     setInputValue('');
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      if (!inputValue.trim()) return;
+      onSend(inputValue.trim());
+      setInputValue('');
+    }
   };
 
   return (
@@ -773,7 +876,8 @@ function ChatPanel({ messages, currentUser, onSend }: {
       </div>
       <form onSubmit={handleSubmit} className="bg-white border border-[rgba(0,0,0,0.08)] p-2 rounded-xl flex items-center gap-2 shrink-0">
         <input type="text" value={inputValue} onChange={e => setInputValue(e.target.value)}
-          placeholder="Type a message..." className="flex-1 px-3 py-2 text-sm outline-none" />
+          onKeyDown={handleKeyDown}
+          placeholder="Type a message... (Enter to send)" className="flex-1 px-3 py-2 text-sm outline-none" />
         <button type="submit" className="bg-[#534AB7] text-white p-2 rounded-lg hover:bg-[#453d9c] transition-colors">
           <Send size={18} />
         </button>
@@ -795,6 +899,7 @@ function DocsPanel({ docs, members, currentUser, onUpdate, onCreate, onDelete }:
   const [showNewDoc, setShowNewDoc] = useState(false);
   const [newDocName, setNewDocName] = useState('');
   const [newDocEmoji, setNewDocEmoji] = useState(DOC_EMOJIS[0]);
+  const [isSaving, setIsSaving] = useState(false);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const activeDoc = docs.find(d => d.id === activeDocId);
@@ -805,9 +910,13 @@ function DocsPanel({ docs, members, currentUser, onUpdate, onCreate, onDelete }:
 
   const handleContentChange = (val: string) => {
     setLocalContent(val);
+    setIsSaving(true);
     if (saveTimer.current) clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(() => {
-      if (activeDocId) onUpdate(activeDocId, val);
+      if (activeDocId) {
+        onUpdate(activeDocId, val);
+        setIsSaving(false);
+      }
     }, 800);
   };
 
@@ -833,7 +942,9 @@ function DocsPanel({ docs, members, currentUser, onUpdate, onCreate, onDelete }:
               <span className="text-2xl">{activeDoc.emoji}</span>
               <h2 className="text-2xl font-bold">{activeDoc.name}</h2>
             </div>
-            <p className="text-xs text-gray-500">Last updated {formatRelative(activeDoc.updatedAt)}</p>
+            <p className="text-xs text-gray-500 flex items-center gap-2">
+              {isSaving ? <span className="text-[#854F0B]">Saving…</span> : `Last updated ${formatRelative(activeDoc.updatedAt)}`}
+            </p>
           </div>
           <div className="flex -space-x-2">
             {activeDoc.editors.slice(0, 4).map(uid => {
@@ -848,7 +959,7 @@ function DocsPanel({ docs, members, currentUser, onUpdate, onCreate, onDelete }:
         </div>
         <textarea value={localContent} onChange={e => handleContentChange(e.target.value)}
           className="flex-1 bg-white border border-[rgba(0,0,0,0.08)] rounded-2xl p-8 outline-none resize-none font-sans leading-relaxed text-gray-800 shadow-sm"
-          placeholder="Start writing..." />
+          placeholder="Start writing… your changes are saved automatically." />
       </motion.div>
     );
   }
@@ -887,6 +998,9 @@ function DocsPanel({ docs, members, currentUser, onUpdate, onCreate, onDelete }:
             <span className="text-3xl mb-4 block">{d.emoji}</span>
             <h3 className="font-bold text-gray-900 mb-1 group-hover:text-[#534AB7]">{d.name}</h3>
             <p className="text-xs text-gray-500 mb-4">Updated {formatRelative(d.updatedAt)}</p>
+            {d.content && (
+              <p className="text-xs text-gray-400 mb-4 line-clamp-2">{d.content.slice(0, 100)}{d.content.length > 100 ? '…' : ''}</p>
+            )}
             <div className="flex -space-x-2">
               {d.editors.slice(0, 4).map(uid => {
                 const m = getMember(uid);
@@ -920,6 +1034,13 @@ function MeetingsPanel({ meetings, members, currentUser, onCreate, onRsvp, onDel
     setForm({ title: '', description: '', time: '', date: '' });
     setShowForm(false);
   };
+
+  // Sort meetings by date/time
+  const sorted = [...meetings].sort((a, b) => {
+    const da = new Date(`${a.date}T${a.time}`).getTime();
+    const db2 = new Date(`${b.date}T${b.time}`).getTime();
+    return da - db2;
+  });
 
   return (
     <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} className="max-w-4xl mx-auto">
@@ -968,20 +1089,25 @@ function MeetingsPanel({ meetings, members, currentUser, onCreate, onRsvp, onDel
       )}
 
       <div className="space-y-4">
-        {meetings.map(meeting => {
+        {sorted.map(meeting => {
           const hasRsvp = meeting.rsvps.includes(currentUser.uid);
           const creator = getMember(meeting.createdBy);
+          const isPast = new Date(`${meeting.date}T${meeting.time}`).getTime() < Date.now();
           return (
-            <div key={meeting.id} className="bg-white border border-[rgba(0,0,0,0.08)] rounded-2xl overflow-hidden flex">
-              <div className="w-24 bg-gray-50 flex flex-col items-center justify-center border-r border-[rgba(0,0,0,0.05)] p-4">
-                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">{meeting.date}</span>
-                <span className="text-sm font-bold text-gray-900">{meeting.time}</span>
+            <div key={meeting.id} className={`bg-white border rounded-2xl overflow-hidden flex ${isPast ? 'opacity-60 border-[rgba(0,0,0,0.05)]' : 'border-[rgba(0,0,0,0.08)]'}`}>
+              <div className="w-28 bg-gray-50 flex flex-col items-center justify-center border-r border-[rgba(0,0,0,0.05)] p-4 shrink-0">
+                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest text-center">{meeting.date}</span>
+                <span className="text-sm font-bold text-gray-900 mt-1">{meeting.time}</span>
+                {isPast && <span className="text-[9px] text-gray-400 mt-1 uppercase font-bold">Past</span>}
               </div>
               <div className="flex-1 p-5 flex items-center gap-6">
                 <div className="flex-1">
                   <h3 className="font-bold text-gray-900 mb-0.5">{meeting.title}</h3>
                   {meeting.description && <p className="text-sm text-gray-500 mb-3">{meeting.description}</p>}
                   <div className="flex items-center gap-3">
+                    {creator && (
+                      <span className="text-[10px] text-gray-400">by {creator.displayName}</span>
+                    )}
                     <div className="flex -space-x-2">
                       {meeting.rsvps.slice(0, 5).map(uid => {
                         const m = getMember(uid);
@@ -994,10 +1120,12 @@ function MeetingsPanel({ meetings, members, currentUser, onCreate, onRsvp, onDel
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
-                  <button onClick={() => onRsvp(meeting)}
-                    className={`px-5 py-2 rounded-xl text-sm font-bold transition-colors flex items-center gap-1.5 ${hasRsvp ? 'bg-[#1D9E75] text-white hover:bg-[#168361]' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}>
-                    {hasRsvp ? <><Check size={14} /> Attending</> : <><Clock size={14} /> RSVP</>}
-                  </button>
+                  {!isPast && (
+                    <button onClick={() => onRsvp(meeting)}
+                      className={`px-5 py-2 rounded-xl text-sm font-bold transition-colors flex items-center gap-1.5 ${hasRsvp ? 'bg-[#1D9E75] text-white hover:bg-[#168361]' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}>
+                      {hasRsvp ? <><Check size={14} /> Attending</> : <><Clock size={14} /> RSVP</>}
+                    </button>
+                  )}
                   {(meeting.createdBy === currentUser.uid || currentUser.role === 'leader') && (
                     <button onClick={() => onDelete(meeting.id)} className="p-2 text-gray-300 hover:text-[#A32D2D] transition-colors">
                       <Trash2 size={14} />
@@ -1020,7 +1148,7 @@ function TeamPanel({ profile, team, members, onCreateTeam, onJoinTeam, onApprove
   onCreateTeam: (e: React.FormEvent<HTMLFormElement>) => void;
   onJoinTeam: (e: React.FormEvent<HTMLFormElement>) => void;
   onApprove: (requestId: string, userId: string) => void;
-  onReject: (requestId: string) => void;
+  onReject: (requestId: string, userId: string) => void;
 }) {
   const [requests, setRequests] = useState<JoinRequest[]>([]);
   const [copied, setCopied] = useState(false);
@@ -1103,7 +1231,7 @@ function TeamPanel({ profile, team, members, onCreateTeam, onJoinTeam, onApprove
           <button onClick={copyCode}
             className="flex items-center gap-2 border border-[rgba(0,0,0,0.1)] px-4 py-2 rounded-xl text-sm font-bold hover:bg-gray-50 transition-colors">
             <Key size={14} />
-            {copied ? 'Copied!' : team.joinCode}
+            {copied ? '✓ Copied!' : team.joinCode}
           </button>
         )}
       </div>
@@ -1128,7 +1256,7 @@ function TeamPanel({ profile, team, members, onCreateTeam, onJoinTeam, onApprove
                   className="bg-[#1D9E75] text-white px-4 py-1.5 rounded-lg text-xs font-bold hover:bg-[#168361] flex items-center gap-1">
                   <Check size={12} /> Approve
                 </button>
-                <button onClick={() => onReject(req.id)}
+                <button onClick={() => onReject(req.id, req.userId)}
                   className="bg-gray-100 text-gray-600 px-4 py-1.5 rounded-lg text-xs font-bold hover:bg-gray-200 flex items-center gap-1">
                   <X size={12} /> Decline
                 </button>

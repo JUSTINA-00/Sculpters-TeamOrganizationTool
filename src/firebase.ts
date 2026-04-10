@@ -1,16 +1,11 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
-import { getFirestore, enableIndexedDbPersistence } from 'firebase/firestore';
+import { getFirestore } from 'firebase/firestore';
 import firebaseConfig from '@/firebase-applet-config';
 
 const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 export const db = getFirestore(app);
-
-// Enable offline persistence so queued writes survive page reloads
-enableIndexedDbPersistence(db).catch(() => {
-  // Persistence unavailable (e.g. multiple tabs) — silent fallback
-});
 
 export enum OperationType {
   CREATE = 'create',
