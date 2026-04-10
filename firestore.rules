@@ -2,43 +2,33 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // ===============================================================
-    // Assumed Data Model
-    // ===============================================================
+    // ================================================================
+    // Data Model
+    // ================================================================
     //
-    // Collection: users
-    // Document ID: {userId} (matches auth.uid)
-    // Fields:
-    //   - uid: string (required)
-    //   - email: string (required)
-    //   - displayName: string (optional)
-    //   - teamId: string (optional)
-    //   - role: string (leader, member, pending)
+    // users/{uid}
+    //   uid, email, displayName, initials, color, role, teamId, createdAt
     //
-    // Collection: teams
-    // Document ID: {teamId}
-    // Fields:
-    //   - id: string (required)
-    //   - name: string (required)
-    //   - joinCode: string (required)
-    //   - leaderId: string (required)
-    //   - createdAt: timestamp (required)
+    // teams/{teamId}
+    //   id, name, joinCode, leaderId, createdAt
     //
-    // Collection: joinRequests
-    // Document ID: {requestId}
-    // Fields:
-    //   - userId: string (required)
-    //   - teamId: string (required)
-    //   - userName: string (required)
-    //   - status: string (pending, approved, rejected)
-    //   - createdAt: timestamp (required)
+    // joinRequests/{requestId}
+    //   userId, teamId, userName, userEmail, status, createdAt
     //
-    // ===============================================================
+    // tasks/{taskId}
+    //   id, title, completed, tag, assignedTo, createdBy, teamId, createdAt, updatedAt
+    //
+    // messages/{messageId}
+    //   id, senderId, senderName, senderInitials, senderColor, text, teamId, timestamp
+    //
+    // docs/{docId}
+    //   id, name, emoji, content, teamId, createdBy, editors, createdAt, updatedAt
+    //
+    // meetings/{meetingId}
+    //   id, title, description, time, date, teamId, createdBy, attendees, rsvps, createdAt
+    //
+    // ================================================================
 
-    // ===============================================================
-    // Helper Functions
-    // ===============================================================
-    
     function isAuthenticated() {
       return request.auth != null;
     }
@@ -47,54 +37,98 @@ service cloud.firestore {
       return isAuthenticated() && request.auth.uid == userId;
     }
 
+    function getUserData() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    function isTeamMember(teamId) {
+      return isAuthenticated() && getUserData().teamId == teamId;
+    }
+
     function isTeamLeader(teamId) {
-      return isAuthenticated() && get(/databases/$(database)/documents/teams/$(teamId)).data.leaderId == request.auth.uid;
+      return isAuthenticated() &&
+        get(/databases/$(database)/documents/teams/$(teamId)).data.leaderId == request.auth.uid;
     }
 
-    function isValidUser(data) {
-      return data.keys().hasAll(['uid', 'email']) &&
-             data.uid is string &&
-             data.email is string &&
-             (!('role' in data) || data.role in ['leader', 'member', 'pending']);
-    }
-
-    function isValidTeam(data) {
-      return data.keys().hasAll(['id', 'name', 'joinCode', 'leaderId']) &&
-             data.id is string &&
-             data.name is string && data.name.size() > 0 && data.name.size() < 100 &&
-             data.joinCode is string && data.joinCode.size() == 6 &&
-             data.leaderId == request.auth.uid;
-    }
-
-    function isValidJoinRequest(data) {
-      return data.keys().hasAll(['userId', 'teamId', 'status']) &&
-             data.userId == request.auth.uid &&
-             data.status == 'pending';
-    }
-
-    // ===============================================================
-    // Rules
-    // ===============================================================
-
+    // ---- Users ----
     match /users/{userId} {
-      allow read: if isOwner(userId) || (isAuthenticated() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.teamId == resource.data.teamId);
-      allow create: if isOwner(userId) && isValidUser(request.resource.data);
-      allow update: if isOwner(userId) && isValidUser(request.resource.data) && 
-                    (request.resource.data.role == resource.data.role || request.resource.data.role == 'pending');
+      allow read: if isOwner(userId) ||
+        (isAuthenticated() && getUserData().teamId != null &&
+         getUserData().teamId == resource.data.teamId);
+      allow create: if isOwner(userId);
+      allow update: if isOwner(userId) ||
+        // Team leader can promote a pending user to member
+        (isAuthenticated() &&
+         resource.data.teamId != null &&
+         isTeamLeader(resource.data.teamId) &&
+         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['role']) &&
+         request.resource.data.role == 'member');
     }
 
+    // ---- Teams ----
     match /teams/{teamId} {
       allow read: if isAuthenticated();
-      allow create: if isAuthenticated() && isValidTeam(request.resource.data);
-      allow update: if isTeamLeader(teamId) && isValidTeam(request.resource.data);
+      allow create: if isAuthenticated() &&
+        request.resource.data.leaderId == request.auth.uid;
+      allow update: if isTeamLeader(teamId);
+      allow delete: if isTeamLeader(teamId);
     }
 
+    // ---- Join Requests ----
     match /joinRequests/{requestId} {
-      allow read: if isAuthenticated() && (request.auth.uid == resource.data.userId || isTeamLeader(resource.data.teamId));
-      allow create: if isAuthenticated() && isValidJoinRequest(request.resource.data);
-      allow update: if isAuthenticated() && isTeamLeader(resource.data.teamId) && 
-                    request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status']) &&
-                    request.resource.data.status in ['approved', 'rejected'];
+      allow read: if isAuthenticated() && (
+        request.auth.uid == resource.data.userId ||
+        isTeamLeader(resource.data.teamId)
+      );
+      allow create: if isAuthenticated() &&
+        request.resource.data.userId == request.auth.uid &&
+        request.resource.data.status == 'pending';
+      allow update: if isAuthenticated() &&
+        isTeamLeader(resource.data.teamId) &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status']) &&
+        request.resource.data.status in ['approved', 'rejected'];
+    }
+
+    // ---- Tasks ----
+    match /tasks/{taskId} {
+      allow read: if isTeamMember(resource.data.teamId);
+      allow create: if isAuthenticated() &&
+        request.resource.data.teamId == getUserData().teamId &&
+        request.resource.data.createdBy == request.auth.uid;
+      allow update: if isTeamMember(resource.data.teamId);
+      allow delete: if isTeamMember(resource.data.teamId);
+    }
+
+    // ---- Messages ----
+    match /messages/{messageId} {
+      allow read: if isTeamMember(resource.data.teamId);
+      allow create: if isAuthenticated() &&
+        request.resource.data.teamId == getUserData().teamId &&
+        request.resource.data.senderId == request.auth.uid;
+      allow update, delete: if false; // Messages are immutable
+    }
+
+    // ---- Docs ----
+    match /docs/{docId} {
+      allow read: if isTeamMember(resource.data.teamId);
+      allow create: if isAuthenticated() &&
+        request.resource.data.teamId == getUserData().teamId &&
+        request.resource.data.createdBy == request.auth.uid;
+      allow update: if isTeamMember(resource.data.teamId);
+      allow delete: if isTeamMember(resource.data.teamId) ||
+        isTeamLeader(resource.data.teamId);
+    }
+
+    // ---- Meetings ----
+    match /meetings/{meetingId} {
+      allow read: if isTeamMember(resource.data.teamId);
+      allow create: if isAuthenticated() &&
+        request.resource.data.teamId == getUserData().teamId &&
+        request.resource.data.createdBy == request.auth.uid;
+      allow update: if isTeamMember(resource.data.teamId);
+      allow delete: if isAuthenticated() &&
+        (resource.data.createdBy == request.auth.uid ||
+         isTeamLeader(resource.data.teamId));
     }
   }
 }

@@ -1,8 +1,12 @@
-export type User = {
-  id: string;
-  name: string;
+export type UserProfile = {
+  uid: string;
+  email: string;
+  displayName: string;
   initials: string;
   color: string;
+  role: 'leader' | 'member' | 'pending';
+  teamId: string | null;
+  createdAt?: number;
 };
 
 export type TaskTag = 'design' | 'dev' | 'pm' | 'bug';
@@ -12,13 +16,22 @@ export type Task = {
   title: string;
   completed: boolean;
   tag: TaskTag;
-  editingBy?: string; // initials
+  assignedTo: string | null; // uid
+  createdBy: string; // uid
+  teamId: string;
+  editingBy?: string; // uid — transient UI state only
+  createdAt: number;
+  updatedAt: number;
 };
 
 export type Message = {
   id: string;
-  senderId: string;
+  senderId: string; // uid
+  senderName: string;
+  senderInitials: string;
+  senderColor: string;
   text: string;
+  teamId: string;
   timestamp: number;
 };
 
@@ -26,9 +39,12 @@ export type Doc = {
   id: string;
   name: string;
   emoji: string;
-  updatedAt: string;
   content: string;
-  editors: string[]; // initials
+  teamId: string;
+  createdBy: string; // uid
+  editors: string[]; // uids
+  updatedAt: number;
+  createdAt: number;
 };
 
 export type Meeting = {
@@ -37,8 +53,31 @@ export type Meeting = {
   description: string;
   time: string;
   date: string;
-  attendees: string[]; // initials
-  type: 'join' | 'rsvp';
+  teamId: string;
+  createdBy: string; // uid
+  attendees: string[]; // uids
+  rsvps: string[]; // uids who confirmed
+  createdAt: number;
+};
+
+export type TeamMember = UserProfile;
+
+export type Team = {
+  id: string;
+  name: string;
+  joinCode: string;
+  leaderId: string;
+  createdAt: number;
+};
+
+export type JoinRequest = {
+  id: string;
+  userId: string;
+  teamId: string;
+  userName: string;
+  userEmail: string;
+  status: 'pending' | 'approved' | 'rejected';
+  createdAt: number;
 };
 
 export type NodeStatus = 'alive' | 'dead';
