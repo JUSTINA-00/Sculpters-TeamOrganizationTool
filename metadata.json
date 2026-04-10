@@ -1,0 +1,5 @@
+{
+  "name": "Sculptors",
+  "description": "A distributed team office web app with real-time sync simulation and offline capabilities.",
+  "requestFramePermissions": []
+}

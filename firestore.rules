@@ -1,0 +1,100 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: users
+    // Document ID: {userId} (matches auth.uid)
+    // Fields:
+    //   - uid: string (required)
+    //   - email: string (required)
+    //   - displayName: string (optional)
+    //   - teamId: string (optional)
+    //   - role: string (leader, member, pending)
+    //
+    // Collection: teams
+    // Document ID: {teamId}
+    // Fields:
+    //   - id: string (required)
+    //   - name: string (required)
+    //   - joinCode: string (required)
+    //   - leaderId: string (required)
+    //   - createdAt: timestamp (required)
+    //
+    // Collection: joinRequests
+    // Document ID: {requestId}
+    // Fields:
+    //   - userId: string (required)
+    //   - teamId: string (required)
+    //   - userName: string (required)
+    //   - status: string (pending, approved, rejected)
+    //   - createdAt: timestamp (required)
+    //
+    // ===============================================================
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isTeamLeader(teamId) {
+      return isAuthenticated() && get(/databases/$(database)/documents/teams/$(teamId)).data.leaderId == request.auth.uid;
+    }
+
+    function isValidUser(data) {
+      return data.keys().hasAll(['uid', 'email']) &&
+             data.uid is string &&
+             data.email is string &&
+             (!('role' in data) || data.role in ['leader', 'member', 'pending']);
+    }
+
+    function isValidTeam(data) {
+      return data.keys().hasAll(['id', 'name', 'joinCode', 'leaderId']) &&
+             data.id is string &&
+             data.name is string && data.name.size() > 0 && data.name.size() < 100 &&
+             data.joinCode is string && data.joinCode.size() == 6 &&
+             data.leaderId == request.auth.uid;
+    }
+
+    function isValidJoinRequest(data) {
+      return data.keys().hasAll(['userId', 'teamId', 'status']) &&
+             data.userId == request.auth.uid &&
+             data.status == 'pending';
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+
+    match /users/{userId} {
+      allow read: if isOwner(userId) || (isAuthenticated() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.teamId == resource.data.teamId);
+      allow create: if isOwner(userId) && isValidUser(request.resource.data);
+      allow update: if isOwner(userId) && isValidUser(request.resource.data) && 
+                    (request.resource.data.role == resource.data.role || request.resource.data.role == 'pending');
+    }
+
+    match /teams/{teamId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && isValidTeam(request.resource.data);
+      allow update: if isTeamLeader(teamId) && isValidTeam(request.resource.data);
+    }
+
+    match /joinRequests/{requestId} {
+      allow read: if isAuthenticated() && (request.auth.uid == resource.data.userId || isTeamLeader(resource.data.teamId));
+      allow create: if isAuthenticated() && isValidJoinRequest(request.resource.data);
+      allow update: if isAuthenticated() && isTeamLeader(resource.data.teamId) && 
+                    request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status']) &&
+                    request.resource.data.status in ['approved', 'rejected'];
+    }
+  }
+}

@@ -1,0 +1,57 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User profile and team association",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "email": { "type": "string" },
+        "displayName": { "type": "string" },
+        "teamId": { "type": "string", "description": "ID of the team the user belongs to" },
+        "role": { "type": "string", "enum": ["leader", "member", "pending"] }
+      },
+      "required": ["uid", "email"]
+    },
+    "Team": {
+      "title": "Team",
+      "description": "A team group",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "joinCode": { "type": "string" },
+        "leaderId": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "name", "joinCode", "leaderId"]
+    },
+    "JoinRequest": {
+      "title": "Join Request",
+      "description": "Request to join a team",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "teamId": { "type": "string" },
+        "userName": { "type": "string" },
+        "status": { "type": "string", "enum": ["pending", "approved", "rejected"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "teamId", "status"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User profile documents"
+    },
+    "/teams/{teamId}": {
+      "schema": "Team",
+      "description": "Team definitions"
+    },
+    "/joinRequests/{requestId}": {
+      "schema": "JoinRequest",
+      "description": "Requests to join teams"
+    }
+  }
+}
