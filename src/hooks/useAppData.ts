@@ -39,22 +39,31 @@ export function useAppData() {
     return onAuthStateChanged(auth, async fbUser => {
       setFirebaseUser(fbUser);
       if (!fbUser) { setProfile(null); setTeam(null); setLoading(false); return; }
-      const snap = await getDoc(doc(db, 'users', fbUser.uid));
-      if (snap.exists()) {
-        const p = snap.data() as UserProfile;
-        setProfile(p);
-        if (p.teamId) setActiveTeamId(p.teamId);
+      try {
+        const snap = await getDoc(doc(db, 'users', fbUser.uid));
+        if (snap.exists()) {
+          const p = snap.data() as UserProfile;
+          setProfile(p);
+          if (p.teamId) setActiveTeamId(p.teamId);
+        }
+        const sSnap = await getDoc(doc(db, 'userSettings', fbUser.uid));
+        if (sSnap.exists()) setUserSettings(sSnap.data() as UserSettings);
+      } catch (err) {
+        console.error('Error loading user data:', err);
+      } finally {
+        setLoading(false);
       }
-      const sSnap = await getDoc(doc(db, 'userSettings', fbUser.uid));
-      if (sSnap.exists()) setUserSettings(sSnap.data() as UserSettings);
-      setLoading(false);
     });
   }, []);
 
   useEffect(() => {
     if (!firebaseUser) return;
     return onSnapshot(doc(db, 'users', firebaseUser.uid), snap => {
-      if (snap.exists()) setProfile(snap.data() as UserProfile);
+      if (snap.exists()) {
+        const p = snap.data() as UserProfile;
+        setProfile(p);
+        if (p.teamId) setActiveTeamId(p.teamId);
+      }
     });
   }, [firebaseUser]);
 

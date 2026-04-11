@@ -58,7 +58,6 @@ export default function App() {
   const isPending = profile?.role === 'pending';
 
   const handleTabChange = (tab: ActiveTab) => {
-    if (isPending && tab !== 'team' && tab !== 'home' && tab !== 'settings') return;
     if (tab === 'chat') { lastSeenMessage.current = Date.now(); setUnreadMessages(0); }
     setActiveTab(tab);
   };
