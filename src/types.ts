@@ -91,3 +91,28 @@ export type AppState = {
     C: NodeStatus;
   };
 };
+
+export type AppNotification = {
+  id: string;
+  userId: string;
+  message: string;
+  read: boolean;
+  createdAt: number;
+  type: 'approval' | 'rejection' | 'info';
+};
+
+export type TeamEntry = {
+  teamId: string;
+  teamName: string;
+  role: 'leader' | 'member' | 'pending';
+  joinedAt: number;
+};
+
+export type UserSettings = {
+  theme: 'light' | 'dark' | 'system';
+  accentColor: string;
+  emailNotifications: boolean;
+  soundNotifications: boolean;
+  compactMode: boolean;
+  showOnlineStatus: boolean;
+};
