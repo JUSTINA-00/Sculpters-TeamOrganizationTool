@@ -63,8 +63,8 @@ export function ChatPanel({ messages, currentUser, onSend }: ChatPanelProps) {
         })}
       </div>
       <form onSubmit={handleSubmit} className="bg-white border border-[rgba(0,0,0,0.08)] p-2 rounded-xl flex items-center gap-2 shrink-0">
-        <input type="text" value={inputValue} onChange={e => setInputValue(e.target.value)} onKeyDown={handleKeyDown}
-          placeholder="Type a message… (Enter to send)" className="flex-1 px-3 py-2 text-sm outline-none" />
+        <input id="chat-input" name="chat-input" type="text" value={inputValue} onChange={e => setInputValue(e.target.value)} onKeyDown={handleKeyDown}
+          placeholder="Type a message… (Enter to send)" className="flex-1 px-3 py-2 text-sm outline-none" autoComplete="off" />
         <button type="submit" className="bg-[#534AB7] text-white p-2 rounded-lg hover:bg-[#453d9c]">
           <Send size={18} />
         </button>

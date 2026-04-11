@@ -2,14 +2,14 @@ import { useState, useEffect, useRef } from 'react';
 import { onAuthStateChanged, User as FirebaseUser } from 'firebase/auth';
 import {
   doc, getDoc, onSnapshot, collection, query,
-  where, orderBy, getDocs
+  where, orderBy, getDocs, updateDoc
 } from 'firebase/firestore';
 import { auth, db } from '../firebase';
 import {
   UserProfile, Task, Message, Doc, Meeting, Team,
   TeamMember, TeamEntry, UserSettings, AppState, AppNotification
 } from '../types';
-import { DEFAULT_SETTINGS } from '../utils/helpers';
+import { DEFAULT_SETTINGS, getInitials, pickColor } from '../utils/helpers';
 
 export function useAppData() {
   const [firebaseUser, setFirebaseUser] = useState<FirebaseUser | null>(null);
@@ -43,6 +43,14 @@ export function useAppData() {
         const snap = await getDoc(doc(db, 'users', fbUser.uid));
         if (snap.exists()) {
           const p = snap.data() as UserProfile;
+          // Backfill missing fields for users created before initials/color were set
+          if (!p.initials || !p.color) {
+            const initials = p.initials || getInitials(p.displayName || fbUser.email || 'U');
+            const color = p.color || pickColor(fbUser.uid);
+            await updateDoc(doc(db, 'users', fbUser.uid), { initials, color });
+            p.initials = initials;
+            p.color = color;
+          }
           setProfile(p);
           if (p.teamId) setActiveTeamId(p.teamId);
         }

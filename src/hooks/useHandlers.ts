@@ -144,7 +144,10 @@ export function useHandlers({
   // ── Messages ──────────────────────────────────────────────────────────────
   const handleSendMessage = async (text: string) => {
     if (!activeTeamId || !firebaseUser || !profile) return;
-    try { await addDoc(collection(db, 'messages'), { senderId: firebaseUser.uid, senderName: profile.displayName, senderInitials: profile.initials, senderColor: profile.color, text, teamId: activeTeamId, timestamp: Date.now() }); triggerSync(); }
+    const initials = profile.initials || getInitials(profile.displayName || firebaseUser.email || 'U');
+    const color = profile.color || pickColor(firebaseUser.uid);
+    const displayName = profile.displayName || firebaseUser.email || 'Unknown';
+    try { await addDoc(collection(db, 'messages'), { senderId: firebaseUser.uid, senderName: displayName, senderInitials: initials, senderColor: color, text, teamId: activeTeamId, timestamp: Date.now() }); triggerSync(); }
     catch (err) { handleFirestoreError(err, OperationType.CREATE, 'messages'); }
   };
 

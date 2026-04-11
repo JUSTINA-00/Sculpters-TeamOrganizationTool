@@ -45,23 +45,23 @@ export function MeetingsPanel({ meetings, members, currentUser, onCreate, onRsvp
           <h3 className="font-bold text-gray-800">New Meeting</h3>
           <div className="grid grid-cols-2 gap-4">
             <div className="col-span-2">
-              <label className="block text-xs font-bold text-gray-400 uppercase mb-1">Title</label>
-              <input value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))} required placeholder="Weekly Standup"
+              <label htmlFor="meeting-title" className="block text-xs font-bold text-gray-400 uppercase mb-1">Title</label>
+              <input id="meeting-title" value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))} required placeholder="Weekly Standup"
                 className="w-full px-3 py-2 rounded-xl border border-[rgba(0,0,0,0.1)] outline-none focus:border-[#534AB7] text-sm" />
             </div>
             <div className="col-span-2">
-              <label className="block text-xs font-bold text-gray-400 uppercase mb-1">Description</label>
-              <input value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} placeholder="What's this about?"
+              <label htmlFor="meeting-desc" className="block text-xs font-bold text-gray-400 uppercase mb-1">Description</label>
+              <input id="meeting-desc" value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} placeholder="What's this about?"
                 className="w-full px-3 py-2 rounded-xl border border-[rgba(0,0,0,0.1)] outline-none focus:border-[#534AB7] text-sm" />
             </div>
             <div>
-              <label className="block text-xs font-bold text-gray-400 uppercase mb-1">Date</label>
-              <input type="date" value={form.date} onChange={e => setForm(f => ({ ...f, date: e.target.value }))} required
+              <label htmlFor="meeting-date" className="block text-xs font-bold text-gray-400 uppercase mb-1">Date</label>
+              <input id="meeting-date" type="date" value={form.date} onChange={e => setForm(f => ({ ...f, date: e.target.value }))} required
                 className="w-full px-3 py-2 rounded-xl border border-[rgba(0,0,0,0.1)] outline-none focus:border-[#534AB7] text-sm" />
             </div>
             <div>
-              <label className="block text-xs font-bold text-gray-400 uppercase mb-1">Time</label>
-              <input type="time" value={form.time} onChange={e => setForm(f => ({ ...f, time: e.target.value }))} required
+              <label htmlFor="meeting-time" className="block text-xs font-bold text-gray-400 uppercase mb-1">Time</label>
+              <input id="meeting-time" type="time" value={form.time} onChange={e => setForm(f => ({ ...f, time: e.target.value }))} required
                 className="w-full px-3 py-2 rounded-xl border border-[rgba(0,0,0,0.1)] outline-none focus:border-[#534AB7] text-sm" />
             </div>
           </div>

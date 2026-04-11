@@ -48,19 +48,19 @@ export function AuthScreen({ mode, onLogin, onSignup, onToggleMode }: AuthScreen
         <form onSubmit={handleSubmit} className="space-y-4">
           {mode === 'signup' && (
             <div>
-              <label className="block text-xs font-bold text-gray-400 uppercase mb-1">Full Name</label>
-              <input name="name" type="text" required placeholder="Alex Smith"
+              <label htmlFor="auth-name" className="block text-xs font-bold text-gray-400 uppercase mb-1">Full Name</label>
+              <input id="auth-name" name="name" type="text" required placeholder="Alex Smith" autoComplete="name"
                 className="w-full px-4 py-2 rounded-xl border border-[rgba(0,0,0,0.1)] outline-none focus:border-[#534AB7]" />
             </div>
           )}
           <div>
-            <label className="block text-xs font-bold text-gray-400 uppercase mb-1">Email</label>
-            <input name="email" type="email" required placeholder="you@example.com"
+            <label htmlFor="auth-email" className="block text-xs font-bold text-gray-400 uppercase mb-1">Email</label>
+            <input id="auth-email" name="email" type="email" required placeholder="you@example.com" autoComplete="email"
               className="w-full px-4 py-2 rounded-xl border border-[rgba(0,0,0,0.1)] outline-none focus:border-[#534AB7]" />
           </div>
           <div>
-            <label className="block text-xs font-bold text-gray-400 uppercase mb-1">Password</label>
-            <input name="password" type="password" required placeholder="••••••••" minLength={6}
+            <label htmlFor="auth-password" className="block text-xs font-bold text-gray-400 uppercase mb-1">Password</label>
+            <input id="auth-password" name="password" type="password" required placeholder="••••••••" minLength={6} autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
               className="w-full px-4 py-2 rounded-xl border border-[rgba(0,0,0,0.1)] outline-none focus:border-[#534AB7]" />
           </div>
           {error && (

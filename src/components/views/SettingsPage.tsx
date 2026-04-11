@@ -108,13 +108,13 @@ export function SettingsPage({ profile, settings, onSave, onClose }: SettingsPag
               </div>
               <div className="space-y-4">
                 <div>
-                  <label className="block text-xs font-bold text-gray-400 uppercase mb-1.5">Display Name</label>
-                  <input value={displayName} onChange={e => setDisplayName(e.target.value)}
+                  <label htmlFor="settings-display-name" className="block text-xs font-bold text-gray-400 uppercase mb-1.5">Display Name</label>
+                  <input id="settings-display-name" value={displayName} onChange={e => setDisplayName(e.target.value)}
                     className="w-full px-4 py-2.5 rounded-xl border border-[rgba(0,0,0,0.1)] outline-none focus:border-[#534AB7] text-sm bg-white" />
                 </div>
                 <div>
-                  <label className="block text-xs font-bold text-gray-400 uppercase mb-1.5">Email</label>
-                  <input value={profile.email} disabled
+                  <label htmlFor="settings-email" className="block text-xs font-bold text-gray-400 uppercase mb-1.5">Email</label>
+                  <input id="settings-email" value={profile.email} disabled
                     className="w-full px-4 py-2.5 rounded-xl border border-[rgba(0,0,0,0.08)] text-sm bg-gray-50 text-gray-400 cursor-not-allowed" />
                   <p className="text-[11px] text-gray-400 mt-1">Email cannot be changed.</p>
                 </div>
@@ -205,8 +205,8 @@ export function SettingsPage({ profile, settings, onSave, onClose }: SettingsPag
                 <h4 className="font-bold text-gray-800 text-sm">Change Password</h4>
                 {[{ key: 'current', label: 'Current Password' }, { key: 'next', label: 'New Password' }, { key: 'confirm', label: 'Confirm New Password' }].map(f => (
                   <div key={f.key}>
-                    <label className="block text-xs font-bold text-gray-400 uppercase mb-1.5">{f.label}</label>
-                    <input type="password" value={pw[f.key as keyof typeof pw]}
+                    <label htmlFor={`pw-${f.key}`} className="block text-xs font-bold text-gray-400 uppercase mb-1.5">{f.label}</label>
+                    <input id={`pw-${f.key}`} type="password" value={pw[f.key as keyof typeof pw]}
                       onChange={e => setPw(p => ({ ...p, [f.key]: e.target.value }))}
                       className="w-full px-4 py-2.5 rounded-xl border border-[rgba(0,0,0,0.1)] outline-none focus:border-[#534AB7] text-sm" />
                   </div>
