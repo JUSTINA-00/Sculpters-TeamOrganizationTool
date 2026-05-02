@@ -2,12 +2,12 @@ import { useState, useEffect, useRef } from 'react';
 import { onAuthStateChanged, User as FirebaseUser } from 'firebase/auth';
 import {
   doc, getDoc, onSnapshot, collection, query,
-  where, orderBy, getDocs, updateDoc
+  where, orderBy, updateDoc
 } from 'firebase/firestore';
 import { auth, db } from '../firebase';
 import {
   UserProfile, Task, Message, Doc, Meeting, Team,
-  TeamMember, TeamEntry, UserSettings, AppState, AppNotification
+  TeamMember, TeamEntry, TeamMembership, UserSettings, AppState,
 } from '../types';
 import { DEFAULT_SETTINGS, getInitials, pickColor } from '../utils/helpers';
 
@@ -16,6 +16,7 @@ export function useAppData() {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [teamEntries, setTeamEntries] = useState<TeamEntry[]>([]);
   const [activeTeamId, setActiveTeamId] = useState<string | null>(null);
+  const [membership, setMembership] = useState<TeamMembership | null>(null); // current team role
   const [team, setTeam] = useState<Team | null>(null);
   const [members, setMembers] = useState<TeamMember[]>([]);
   const [loading, setLoading] = useState(true);
@@ -38,12 +39,14 @@ export function useAppData() {
   useEffect(() => {
     return onAuthStateChanged(auth, async fbUser => {
       setFirebaseUser(fbUser);
-      if (!fbUser) { setProfile(null); setTeam(null); setLoading(false); return; }
+      if (!fbUser) {
+        setProfile(null); setTeam(null); setLoading(false); return;
+      }
       try {
         const snap = await getDoc(doc(db, 'users', fbUser.uid));
         if (snap.exists()) {
           const p = snap.data() as UserProfile;
-          // Backfill missing fields for users created before initials/color were set
+          // Backfill missing initials/color
           if (!p.initials || !p.color) {
             const initials = p.initials || getInitials(p.displayName || fbUser.email || 'U');
             const color = p.color || pickColor(fbUser.uid);
@@ -52,7 +55,6 @@ export function useAppData() {
             p.color = color;
           }
           setProfile(p);
-          if (p.teamId) setActiveTeamId(p.teamId);
         }
         const sSnap = await getDoc(doc(db, 'userSettings', fbUser.uid));
         if (sSnap.exists()) setUserSettings(sSnap.data() as UserSettings);
@@ -64,39 +66,54 @@ export function useAppData() {
     });
   }, []);
 
+  // Live-sync profile (identity only, no role/teamId)
   useEffect(() => {
     if (!firebaseUser) return;
     return onSnapshot(doc(db, 'users', firebaseUser.uid), snap => {
-      if (snap.exists()) {
-        const p = snap.data() as UserProfile;
-        setProfile(p);
-        if (p.teamId) setActiveTeamId(p.teamId);
-      }
+      if (snap.exists()) setProfile(snap.data() as UserProfile);
     });
   }, [firebaseUser]);
 
-  // ── Team entries ──────────────────────────────────────────────────────────
+  // ── Team entries — sourced from teamMembers ────────────────────────────────
   useEffect(() => {
     if (!firebaseUser) return;
-    const q = query(collection(db, 'joinRequests'), where('userId', '==', firebaseUser.uid), where('status', '==', 'approved'));
+    const q = query(
+      collection(db, 'teamMembers'),
+      where('userId', '==', firebaseUser.uid),
+    );
     return onSnapshot(q, async snap => {
-      const teamIds = snap.docs.map(d => d.data().teamId as string);
-      if (profile?.teamId && !teamIds.includes(profile.teamId)) teamIds.push(profile.teamId);
+      const memberships = snap.docs.map(d => d.data() as TeamMembership);
       const entries: TeamEntry[] = [];
-      for (const tid of teamIds) {
-        const tSnap = await getDoc(doc(db, 'teams', tid));
+      for (const m of memberships) {
+        const tSnap = await getDoc(doc(db, 'teams', m.teamId));
         if (tSnap.exists()) {
           const t = tSnap.data() as Team;
           entries.push({
-            teamId: tid, teamName: t.name,
-            role: t.leaderId === firebaseUser.uid ? 'leader' : 'member',
-            joinedAt: t.createdAt,
+            teamId: m.teamId,
+            teamName: t.name,
+            role: m.role,
+            joinedAt: m.joinedAt,
           });
         }
       }
       setTeamEntries(entries);
+
+      // Auto-select first team if none active
+      setActiveTeamId(prev => {
+        if (prev) return prev; // keep existing selection
+        return entries.length > 0 ? entries[0].teamId : null;
+      });
     });
-  }, [firebaseUser, profile?.teamId]);
+  }, [firebaseUser]);
+
+  // ── Current membership (role for active team) ─────────────────────────────
+  useEffect(() => {
+    if (!firebaseUser || !activeTeamId) { setMembership(null); return; }
+    return onSnapshot(
+      doc(db, 'teamMembers', `${activeTeamId}_${firebaseUser.uid}`),
+      snap => setMembership(snap.exists() ? (snap.data() as TeamMembership) : null),
+    );
+  }, [firebaseUser, activeTeamId]);
 
   // ── Alert watchers for non-active teams ───────────────────────────────────
   useEffect(() => {
@@ -129,43 +146,68 @@ export function useAppData() {
     });
   }, [activeTeamId]);
 
+  // Members — sourced from teamMembers collection, joined with users
   useEffect(() => {
     if (!activeTeamId) return;
-    const q = query(collection(db, 'users'), where('teamId', '==', activeTeamId), where('role', 'in', ['leader', 'member']));
-    return onSnapshot(q, snap => setMembers(snap.docs.map(d => d.data() as TeamMember)));
+    const q = query(
+      collection(db, 'teamMembers'),
+      where('teamId', '==', activeTeamId),
+    );
+    return onSnapshot(q, async snap => {
+      const memberships = snap.docs.map(d => d.data() as TeamMembership);
+      const memberList: TeamMember[] = [];
+      for (const m of memberships) {
+        const uSnap = await getDoc(doc(db, 'users', m.userId));
+        if (uSnap.exists()) {
+          const u = uSnap.data() as UserProfile;
+          memberList.push({
+            uid: u.uid,
+            displayName: u.displayName,
+            email: u.email,
+            initials: u.initials,
+            color: u.color,
+          });
+        }
+      }
+      setMembers(memberList);
+    });
   }, [activeTeamId]);
 
-  useEffect(() => {
-    if (!activeTeamId || profile?.role === 'pending') return;
-    const q = query(collection(db, 'tasks'), where('teamId', '==', activeTeamId), orderBy('createdAt', 'asc'));
-    return onSnapshot(q, snap => setTasks(snap.docs.map(d => ({ id: d.id, ...d.data() } as Task))));
-  }, [activeTeamId, profile?.role]);
+  // Tasks, messages, docs, meetings — gated on approved membership
+  const isApproved = !!membership; // membership doc exists = approved
 
   useEffect(() => {
-    if (!activeTeamId || profile?.role === 'pending') return;
+    if (!activeTeamId || !isApproved) return;
+    const q = query(collection(db, 'tasks'), where('teamId', '==', activeTeamId), orderBy('createdAt', 'asc'));
+    return onSnapshot(q, snap => setTasks(snap.docs.map(d => ({ id: d.id, ...d.data() } as Task))));
+  }, [activeTeamId, isApproved]);
+
+  useEffect(() => {
+    if (!activeTeamId || !isApproved) return;
     const q = query(collection(db, 'messages'), where('teamId', '==', activeTeamId), orderBy('timestamp', 'asc'));
     return onSnapshot(q, snap => {
       const msgs = snap.docs.map(d => ({ id: d.id, ...d.data() } as Message));
       setMessages(msgs);
       setUnreadMessages(msgs.filter(m => m.timestamp > lastSeenMessage.current && m.senderId !== firebaseUser?.uid).length);
     });
-  }, [activeTeamId, profile?.role, firebaseUser?.uid]);
+  }, [activeTeamId, isApproved, firebaseUser?.uid]);
 
   useEffect(() => {
-    if (!activeTeamId || profile?.role === 'pending') return;
+    if (!activeTeamId || !isApproved) return;
     const q = query(collection(db, 'docs'), where('teamId', '==', activeTeamId), orderBy('updatedAt', 'desc'));
     return onSnapshot(q, snap => setDocs(snap.docs.map(d => ({ id: d.id, ...d.data() } as Doc))));
-  }, [activeTeamId, profile?.role]);
+  }, [activeTeamId, isApproved]);
 
   useEffect(() => {
-    if (!activeTeamId || profile?.role === 'pending') return;
+    if (!activeTeamId || !isApproved) return;
     const q = query(collection(db, 'meetings'), where('teamId', '==', activeTeamId), orderBy('createdAt', 'asc'));
     return onSnapshot(q, snap => setMeetings(snap.docs.map(d => ({ id: d.id, ...d.data() } as Meeting))));
-  }, [activeTeamId, profile?.role]);
+  }, [activeTeamId, isApproved]);
 
   return {
     firebaseUser, profile, setProfile,
     teamEntries, activeTeamId, setActiveTeamId,
+    membership, // expose this so App.tsx can pass it to TeamPanel
     team, members,
     loading, userSettings, setUserSettings,
     tasks, messages, docs, meetings,

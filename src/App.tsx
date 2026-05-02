@@ -22,6 +22,7 @@ import { Avatar } from './components/ui/Avatar';
 import { TeamSwitcher } from './components/layout/TeamSwitcher';
 import { NavItem } from './components/layout/NavItem';
 import { SyncIndicator, NodeItem } from './components/ui/StatusIndicators';
+import { AppState } from './types';
 
 type ActiveTab = 'home' | 'tasks' | 'chat' | 'docs' | 'meetings' | 'team' | 'settings';
 
@@ -33,7 +34,7 @@ export default function App() {
   const data = useAppData();
   const {
     firebaseUser, profile, loading,
-    teamEntries, activeTeamId, setActiveTeamId,
+    teamEntries, activeTeamId, setActiveTeamId,membership,
     team, members,
     userSettings, setUserSettings,
     tasks, messages, docs, meetings,
@@ -44,8 +45,8 @@ export default function App() {
   } = data;
 
   const triggerSync = useCallback(() => {
-    setAppState(p => ({ ...p, syncStatus: 'syncing' }));
-    setTimeout(() => setAppState(p => ({ ...p, syncStatus: 'synced' })), 700);
+    setAppState((p: AppState) => ({ ...p, syncStatus: 'syncing' }));
+    setTimeout(() => setAppState((p: AppState) => ({ ...p, syncStatus: 'synced' })), 700);
   }, [setAppState]);
 
   const handlers = useHandlers({
@@ -55,7 +56,7 @@ export default function App() {
   });
 
   // ── Tab change ─────────────────────────────────────────────────────────────
-  const isPending = profile?.role === 'pending';
+  const isPending = !!activeTeamId && !membership;
 
   const handleTabChange = (tab: ActiveTab) => {
     if (tab === 'chat') { lastSeenMessage.current = Date.now(); setUnreadMessages(0); }
@@ -101,8 +102,8 @@ export default function App() {
           <span className="font-bold text-base tracking-tight text-gray-900">{team ? team.name : 'Sculptors'}</span>
           {team && (
             <span className={`text-[9px] px-1.5 py-0.5 rounded font-bold uppercase tracking-wider
-              ${profile.role === 'leader' ? 'bg-[#534AB7] text-white' : 'bg-gray-100 text-gray-500'}`}>
-              {profile.role}
+              ${membership?.role === 'leader' ? 'bg-[#534AB7] text-white' : 'bg-gray-100 text-gray-500'}`}>
+              {membership?.role ?? 'pending'}
             </span>
           )}
         </button>
@@ -257,7 +258,7 @@ export default function App() {
               )}
               {!showNewTeamPanel && activeTab === 'team' && (
                 <TeamPanel key={`team-${activeTeamId}`}
-                  profile={profile} team={team} members={members}
+                  profile={profile} membership={membership} team={team} members={members}
                   onApprove={handlers.handleApproveRequest} onReject={handlers.handleRejectRequest}
                 />
               )}

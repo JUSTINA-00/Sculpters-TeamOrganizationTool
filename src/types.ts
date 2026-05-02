@@ -4,8 +4,6 @@ export type UserProfile = {
   displayName: string;
   initials: string;
   color: string;
-  role: 'leader' | 'member' | 'pending';
-  teamId: string | null;
   createdAt?: number;
 };
 
@@ -59,7 +57,12 @@ export type Meeting = {
   createdAt: number;
 };
 
-export type TeamMember = UserProfile;
+export interface TeamMembership {
+  teamId: string;
+  userId: string;
+  role: 'leader' | 'member';
+  joinedAt: number;
+};
 
 export type Team = {
   id: string;
@@ -79,17 +82,12 @@ export type JoinRequest = {
   createdAt: number;
 };
 
-export type NodeStatus = 'alive' | 'dead';
-
-export type AppState = {
-  isOffline: boolean;
-  queuedChanges: number;
-  syncStatus: 'synced' | 'syncing' | 'offline';
-  nodes: {
-    A: NodeStatus;
-    B: NodeStatus;
-    C: NodeStatus;
-  };
+export type TeamMember = {
+  uid: string;
+  displayName: string;
+  email: string;
+  initials: string;
+  color: string;
 };
 
 export type AppNotification = {
@@ -115,4 +113,15 @@ export type UserSettings = {
   soundNotifications: boolean;
   compactMode: boolean;
   showOnlineStatus: boolean;
+};
+
+export type AppState = {
+  isOffline: boolean;
+  queuedChanges: number;
+  syncStatus: 'synced' | 'syncing' | 'offline';
+  nodes: {
+    A: 'alive' | 'dead';
+    B: 'alive' | 'dead';
+    C: 'alive' | 'dead';
+  };
 };
