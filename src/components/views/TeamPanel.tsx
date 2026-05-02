@@ -126,23 +126,54 @@ export function TeamPanel({ profile, team, members, onApprove, onReject }: TeamP
 
       {/* Members list */}
       <div>
-        <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-3">Team Members</h3>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          {members.map(member => (
-            <div key={member.uid} className="bg-white p-4 rounded-xl border border-[rgba(0,0,0,0.08)] flex items-center gap-4">
-              <Avatar initials={member.initials} color={member.color} size="lg" />
-              <div className="flex-1">
-                <div className="flex items-center gap-2">
-                  <p className="font-bold text-sm">{member.displayName}</p>
-                  {member.uid === team?.leaderId && (
-                    <span className="text-[9px] bg-[#534AB7] text-white px-1.5 py-0.5 rounded font-bold uppercase tracking-wider">Leader</span>
-                  )}
-                </div>
-                <p className="text-xs text-gray-400">{member.email}</p>
-              </div>
-            </div>
-          ))}
-        </div>
+        <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-3 flex items-center gap-2">
+          <Users size={14} /> Team Members ({members.length})
+        </h3>
+
+        {members.length === 0 ? (
+          <div className="bg-white border border-[rgba(0,0,0,0.08)] rounded-2xl py-12 text-center text-gray-400 text-sm">
+            No members yet.
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            {[...members]
+              .sort((a, b) => {
+                // Leader always first, then alphabetical
+                if (a.uid === team?.leaderId) return -1;
+                if (b.uid === team?.leaderId) return 1;
+                return a.displayName.localeCompare(b.displayName);
+              })
+              .map(member => {
+                const isLeader = member.uid === team?.leaderId;
+                const isMe = member.uid === profile.uid;
+                return (
+                  <div
+                    key={member.uid}
+                    className={`bg-white p-4 rounded-xl border flex items-center gap-4 transition-all
+                      ${isLeader ? 'border-[#534AB7]/30 bg-[#F8F7FF]' : 'border-[rgba(0,0,0,0.08)]'}`}
+                  >
+                    <Avatar initials={member.initials} color={member.color} size="lg" />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <p className="font-bold text-sm truncate">{member.displayName}</p>
+                        {isLeader && (
+                          <span className="text-[9px] bg-[#534AB7] text-white px-1.5 py-0.5 rounded font-bold uppercase tracking-wider shrink-0">
+                            Leader
+                          </span>
+                        )}
+                        {isMe && (
+                          <span className="text-[9px] bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded font-bold uppercase tracking-wider shrink-0">
+                            You
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-xs text-gray-400 truncate">{member.email}</p>
+                    </div>
+                  </div>
+                );
+              })}
+          </div>
+        )}
       </div>
     </motion.div>
   );

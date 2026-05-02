@@ -168,15 +168,6 @@ export default function App() {
               <Clock size={10} className="inline mr-1" />Awaiting approval. Limited access.
             </div>
           )}
-
-          <div className="mt-auto p-4 border-t border-[rgba(0,0,0,0.05)]">
-            <h3 className="text-[9px] font-bold text-gray-400 uppercase tracking-wider mb-3">Distributed Nodes</h3>
-            <div className="space-y-2">
-              <NodeItem label="Node A" type="primary" status={appState.nodes.A} />
-              <NodeItem label="Node B" type="replica" status={appState.nodes.B} />
-              <NodeItem label="Node C" type="replica" status={appState.nodes.C} />
-            </div>
-          </div>
         </aside>
 
         {/* Main content */}
