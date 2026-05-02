@@ -10,13 +10,14 @@ interface TasksPanelProps {
   tasks: Task[];
   members: TeamMember[];
   currentUser: UserProfile;
+  isLeader: boolean;        // ← add this
   onToggle: (task: Task) => void;
   onAdd: (title: string, tag: TaskTag, assignedTo: string | null) => void;
   onDelete: (id: string) => void;
   onAssign: (taskId: string, assignedTo: string | null) => void;
 }
 
-export function TasksPanel({ tasks, members, currentUser, onToggle, onAdd, onDelete, onAssign }: TasksPanelProps) {
+export function TasksPanel({ tasks, members, currentUser, isLeader, onToggle, onAdd, onDelete, onAssign }: TasksPanelProps) {
   const [inputValue, setInputValue] = useState('');
   const [selectedTag, setSelectedTag] = useState<TaskTag>('dev');
   const [assignedTo, setAssignedTo] = useState('');
@@ -97,7 +98,7 @@ export function TasksPanel({ tasks, members, currentUser, onToggle, onAdd, onDel
                   )}
                 </div>
               </div>
-              {(currentUser.role === 'leader' || task.createdBy === currentUser.uid) && members.length > 0 && (
+              {(isLeader || task.createdBy === currentUser.uid) && members.length > 0 && (
                 <div className="opacity-0 group-hover:opacity-100 transition-opacity">
                   <select value={task.assignedTo || ''} onChange={e => onAssign(task.id, e.target.value || null)}
                     className="text-[10px] bg-gray-50 border border-[rgba(0,0,0,0.1)] rounded px-2 py-1 outline-none cursor-pointer max-w-[100px]">
@@ -106,7 +107,7 @@ export function TasksPanel({ tasks, members, currentUser, onToggle, onAdd, onDel
                   </select>
                 </div>
               )}
-              {(task.createdBy === currentUser.uid || currentUser.role === 'leader') && (
+              {(task.createdBy === currentUser.uid || isLeader) && (
                 <button onClick={() => onDelete(task.id)} className="opacity-0 group-hover:opacity-100 p-1.5 text-gray-300 hover:text-[#A32D2D] transition-all shrink-0">
                   <Trash2 size={14} />
                 </button>

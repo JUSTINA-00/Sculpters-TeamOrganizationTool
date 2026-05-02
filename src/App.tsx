@@ -218,7 +218,7 @@ export default function App() {
               {!showNewTeamPanel && activeTab === 'home' && (
                 <HomePanel key={`home-${activeTeamId}`}
                   team={team} profile={profile} members={members}
-                  tasks={tasks} messages={messages} docs={docs} meetings={meetings}
+                  tasks={tasks} messages={messages} docs={docs} meetings={meetings} isLeader={membership?.role === 'leader'}
                   onTabChange={tab => handleTabChange(tab as ActiveTab)}
                 />
               )}
@@ -230,10 +230,16 @@ export default function App() {
                 />
               )}
               {!showNewTeamPanel && activeTab === 'tasks' && !isPending && (
-                <TasksPanel key={`tasks-${activeTeamId}`}
-                  tasks={tasks} members={members} currentUser={profile}
-                  onToggle={handlers.handleToggleTask} onAdd={handlers.handleAddTask}
-                  onDelete={handlers.handleDeleteTask} onAssign={handlers.handleAssignTask}
+                <TasksPanel
+                  key={`tasks-${activeTeamId}`}
+                  tasks={tasks}
+                  members={members}
+                  currentUser={profile}
+                  isLeader={membership?.role === 'leader'}   // ← add this
+                  onToggle={handlers.handleToggleTask}
+                  onAdd={handlers.handleAddTask}
+                  onDelete={handlers.handleDeleteTask}
+                  onAssign={handlers.handleAssignTask}
                 />
               )}
               {!showNewTeamPanel && activeTab === 'chat' && !isPending && (
@@ -244,15 +250,20 @@ export default function App() {
               )}
               {!showNewTeamPanel && activeTab === 'docs' && !isPending && (
                 <DocsPanel key={`docs-${activeTeamId}`}
-                  docs={docs} members={members} currentUser={profile}
+                  docs={docs} members={members} currentUser={profile} isLeader={membership?.role === 'leader'}
                   onUpdate={handlers.handleUpdateDoc} onCreate={handlers.handleCreateDoc}
                   onDelete={handlers.handleDeleteDoc}
                 />
               )}
               {!showNewTeamPanel && activeTab === 'meetings' && !isPending && (
-                <MeetingsPanel key={`meetings-${activeTeamId}`}
-                  meetings={meetings} members={members} currentUser={profile}
-                  onCreate={handlers.handleCreateMeeting} onRsvp={handlers.handleRsvpMeeting}
+                <MeetingsPanel
+                  key={`meetings-${activeTeamId}`}
+                  meetings={meetings}
+                  members={members}
+                  currentUser={profile}
+                  isLeader={membership?.role === 'leader'}   // ← add this
+                  onCreate={handlers.handleCreateMeeting}
+                  onRsvp={handlers.handleRsvpMeeting}
                   onDelete={handlers.handleDeleteMeeting}
                 />
               )}

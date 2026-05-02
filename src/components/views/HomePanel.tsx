@@ -29,6 +29,7 @@ interface HomePanelProps {
   messages: Message[];
   docs: Doc[];
   meetings: Meeting[];
+  isLeader: boolean;        // ← add this
   onTabChange: (tab: 'tasks' | 'chat' | 'docs' | 'meetings' | 'team') => void;
 }
 
@@ -39,7 +40,8 @@ export function HomePanel({
   tasks, 
   messages, 
   docs, 
-  meetings, 
+  meetings,
+  isLeader,                 // ← add this
   onTabChange 
 }: HomePanelProps) {
   const completedTasks = tasks.filter(t => t.completed).length;
@@ -78,8 +80,8 @@ export function HomePanel({
             <div className="flex items-center gap-3 flex-wrap">
               <h1 className="text-2xl font-bold text-gray-900 truncate">{team?.name ?? 'No Team'}</h1>
               <span className={`text-[10px] px-2 py-0.5 rounded font-bold uppercase tracking-wider
-                ${profile.role === 'leader' ? 'bg-[#534AB7] text-white' : 'bg-gray-100 text-gray-500'}`}>
-                {profile.role}
+                ${isLeader ? 'bg-[#534AB7] text-white' : 'bg-gray-100 text-gray-500'}`}>
+                {isLeader ? 'leader' : 'member'}
               </span>
             </div>
             <p className="text-sm text-gray-400 mt-1">Your active workspace</p>

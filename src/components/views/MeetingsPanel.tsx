@@ -8,12 +8,13 @@ interface MeetingsPanelProps {
   meetings: Meeting[];
   members: TeamMember[];
   currentUser: UserProfile;
+  isLeader: boolean;        // ← add this
   onCreate: (data: { title: string; description: string; time: string; date: string }) => void;
   onRsvp: (meeting: Meeting) => void;
   onDelete: (id: string) => void;
 }
 
-export function MeetingsPanel({ meetings, members, currentUser, onCreate, onRsvp, onDelete }: MeetingsPanelProps) {
+export function MeetingsPanel({ meetings, members, currentUser, isLeader, onCreate, onRsvp, onDelete }: MeetingsPanelProps) {
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ title: '', description: '', time: '', date: '' });
 
@@ -110,7 +111,7 @@ export function MeetingsPanel({ meetings, members, currentUser, onCreate, onRsvp
                       {hasRsvp ? <><Check size={14} /> Attending</> : <><Clock size={14} /> RSVP</>}
                     </button>
                   )}
-                  {(meeting.createdBy === currentUser.uid || currentUser.role === 'leader') && (
+                  {(meeting.createdBy === currentUser.uid || isLeader) && (
                     <button onClick={() => onDelete(meeting.id)} className="p-2 text-gray-300 hover:text-[#A32D2D]">
                       <Trash2 size={14} />
                     </button>

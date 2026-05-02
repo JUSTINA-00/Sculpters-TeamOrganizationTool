@@ -10,6 +10,7 @@ interface DocsPanelProps {
   docs: Doc[];
   members: TeamMember[];
   currentUser: UserProfile;
+  isLeader: boolean;        // ← add this
   onUpdate: (id: string, content: string) => void;
   onCreate: (name: string, emoji: string) => void;
   onDelete: (id: string) => void;
@@ -235,7 +236,7 @@ function RichEditor({ initialContent, onChange }: { initialContent: string; onCh
 }
 
 // ── Main panel ────────────────────────────────────────────────────────────────
-export function DocsPanel({ docs, members, currentUser, onUpdate, onCreate, onDelete }: DocsPanelProps) {
+export function DocsPanel({ docs, members, currentUser, isLeader, onUpdate, onCreate, onDelete }: DocsPanelProps) {
   const [activeDocId, setActiveDocId] = useState<string | null>(null);
   const [showNewDoc, setShowNewDoc] = useState(false);
   const [newDocName, setNewDocName] = useState('');
@@ -269,7 +270,7 @@ export function DocsPanel({ docs, members, currentUser, onUpdate, onCreate, onDe
             return m ? <Avatar key={uid} initials={m.initials} color={m.color} size="sm" /> : null;
           })}
         </div>
-        {(activeDoc.createdBy === currentUser.uid || currentUser.role === 'leader') && (
+        {(activeDoc.createdBy === currentUser.uid || isLeader) && (
           <button onClick={() => { onDelete(activeDoc.id); setActiveDocId(null); }}
             className="p-2 text-gray-300 hover:text-[#A32D2D]">
             <Trash2 size={16} />

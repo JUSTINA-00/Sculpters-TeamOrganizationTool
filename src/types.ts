@@ -125,3 +125,5 @@ export type AppState = {
     C: 'alive' | 'dead';
   };
 };
+
+export type NodeStatus = 'alive' | 'dead';
